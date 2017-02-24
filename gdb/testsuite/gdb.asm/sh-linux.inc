@@ -31,7 +31,7 @@
 	comment "subroutine end"
 	.purgem gdbasm_end
 	.macro gdbasm_end name
-	.size   \name, . - \name
+	.size   \name, .-_foo1
 	.align	1
 	.endm
 
@@ -43,7 +43,6 @@
 	.align	2
 .Lconst\@:
 	.long	\subr
-	.align	1
 .Lafterconst\@:
 	jsr	@r1
 	nop
@@ -64,21 +63,7 @@
 
 	comment "crt0 startup"
 	.macro gdbasm_startup
-	comment "If there is a _stack symbol, use it for setting up the stack"
-	comment "pointer.  In hosted mode (when there is no _stack symbol),"
-	comment "the operating system will have initialized it already."
-	mov.l	.stackaddr, r0
-	tst	r0, r0
-	bt	.afterstackaddr
-	mov	r0, r15
-	bra	.afterstackaddr
-	nop
-	.align 2
-.stackaddr:
-	.weak	_stack
-	.long	_stack
-	.align	1
-.afterstackaddr:
+	mov	#0,r14
 	.endm
 
 	comment "Declare a data variable"

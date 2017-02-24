@@ -2339,6 +2339,8 @@ ALLDEPFILES = \
 	ser-uds.c \
 	sh-nbsd-nat.c \
 	sh-nbsd-tdep.c \
+	sh-linux-nat.c \
+	sh-linux-tdep.c \
 	sh-tdep.c \
 	sol2-tdep.c \
 	solib-aix.c \
