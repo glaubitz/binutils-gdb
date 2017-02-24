@@ -26,7 +26,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.  */
 #include "arch-utils.h"
 
 #include "gdb_assert.h"
-#include "gdb_string.h"
 #include <sys/ptrace.h>
 #include <sys/user.h>
 #include <sys/procfs.h>
@@ -226,8 +225,8 @@ sh_linux_fetch_inferior_registers (struct target_ops *ops, struct regcache *regc
   int tid;
 
   /* GNU/Linux LWP ID's are process ID's.  */
-  if ((tid = TIDGET (inferior_ptid)) == 0)
-    tid = PIDGET (inferior_ptid);	/* Not a threaded program.  */
+  if ((tid = ptid_get_lwp (inferior_ptid)) == 0)
+    tid = ptid_get_pid (inferior_ptid);	/* Not a threaded program.  */
 
   for (i = 0; i < SH_LINUX_NUM_REGS; i++)
     if (regno == -1 || regno == i)
@@ -244,8 +243,8 @@ sh_linux_store_inferior_registers (struct target_ops *ops, struct regcache *regc
   int tid;
 
   /* GNU/Linux LWP ID's are process ID's.  */
-  if ((tid = TIDGET (inferior_ptid)) == 0)
-    tid = PIDGET (inferior_ptid);	/* Not a threaded program.  */
+  if ((tid = ptid_get_lwp (inferior_ptid)) == 0)
+    tid = ptid_get_pid (inferior_ptid);	/* Not a threaded program.  */
 
   for (i = 0; i < SH_LINUX_NUM_REGS; i++)
     if (regno == -1 || regno == i)

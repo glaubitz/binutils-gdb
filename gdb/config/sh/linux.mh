@@ -1,8 +1,14 @@
 # Host: Renesas Super-H running GNU/Linux
-NAT_FILE= nm-linux.h
-NATDEPFILES= inf-ptrace.o fork-child.o corelow.o \
-	sh-linux-nat.o \
-	proc-service.o linux-thread-db.o gcore.o \
-	linux-nat.o linux-fork.o
 
-LOADLIBES= -ldl -rdynamic
+NAT_FILE= nm-linux.h
+NATDEPFILES= inf-ptrace.o fork-child.o \
+	sh-linux-nat.o \
+	proc-service.o linux-thread-db.o \
+	linux-nat.o linux-osdata.o linux-fork.o linux-procfs.o linux-ptrace.o \
+	linux-personality.o \
+	linux-waitpid.o linux-namespaces.o
+NAT_CDEPS = $(srcdir)/proc-service.list
+
+# The dynamically loaded libthread_db needs access to symbols in the
+# gdb executable.
+LOADLIBES = -ldl $(RDYNAMIC)

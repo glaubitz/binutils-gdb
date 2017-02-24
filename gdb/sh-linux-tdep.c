@@ -33,7 +33,6 @@
 #include "floatformat.h"
 #include "solib-svr4.h"
 #include "symtab.h"
-#include "gdb_string.h"
 #include "command.h"
 #include "gdb_assert.h"
 
@@ -379,7 +378,7 @@ static int
 sh_linux_sigtramp_p (struct frame_info *this_frame)
 {
   CORE_ADDR pc = get_frame_pc (this_frame);
-  char *name;
+  const char *name;
 
   find_pc_partial_function (pc, &name, NULL, NULL);
 
@@ -444,7 +443,7 @@ sh_linux_sigtramp_frame_cache (struct frame_info *this_frame, void **this_cache)
   CORE_ADDR sigcontext_addr;
 
   if (*this_cache)
-    return *this_cache;
+    return (struct sh_frame_cache *) *this_cache;
 
   cache = sh_alloc_frame_cache ();
 
@@ -475,7 +474,7 @@ sh_linux_sigtramp_frame_this_id (struct frame_info *this_frame, void **this_cach
   (*this_id) = frame_id_build (cache->base + 64, cache->pc);
 }
 
-extern struct value * sh_frame_prev_register ();
+extern struct value * sh_frame_prev_register (struct frame_info *this_frame, void **this_cache, int regnum);
 static struct value *
 sh_linux_sigtramp_frame_prev_register (struct frame_info *this_frame,
 				   void **this_cache, int regnum)
@@ -509,6 +508,7 @@ sh_linux_sigtramp_frame_sniffer (const struct frame_unwind *self,
 static const struct frame_unwind sh_linux_sigtramp_frame_unwind =
 {
   SIGTRAMP_FRAME,
+  default_frame_unwind_stop_reason,
   sh_linux_sigtramp_frame_this_id,
   sh_linux_sigtramp_frame_prev_register,
   NULL,
@@ -520,11 +520,12 @@ static const struct frame_unwind sh_linux_sigtramp_frame_unwind =
    REGCACHE.  If REGNUM is -1, do this for all registers in REGSET.  */
 
 void
-sh_supply_gregset (const struct regset *regset, struct regcache *regcache,
+sh_linux_supply_gregset (const struct regset *regset, struct regcache *regcache,
 		     int regnum, const void *gregs, size_t len)
 {
-  const struct gdbarch_tdep *tdep = gdbarch_tdep (regset->arch);
-  const char *regs = gregs;
+  struct gdbarch *gdbarch = regcache->arch ();
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  const gdb_byte *regs = (const gdb_byte *) gregs;
   int i;
 
   gdb_assert (len == tdep->sizeof_gregset);
@@ -543,12 +544,13 @@ sh_supply_gregset (const struct regset *regset, struct regcache *regcache,
    all registers in REGSET.  */
 
 void
-sh_collect_gregset (const struct regset *regset,
+sh_linux_collect_gregset (const struct regset *regset,
 		      const struct regcache *regcache,
 		      int regnum, void *gregs, size_t len)
 {
-  const struct gdbarch_tdep *tdep = gdbarch_tdep (regset->arch);
-  char *regs = gregs;
+  struct gdbarch *gdbarch = regcache->arch ();
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  gdb_byte *regs = (gdb_byte *) gregs;
   int i;
 
   gdb_assert (len == tdep->sizeof_gregset);
@@ -566,11 +568,12 @@ sh_collect_gregset (const struct regset *regset,
    REGCACHE.  If REGNUM is -1, do this for all registers in REGSET.  */
 
 static void
-sh_supply_fpregset (const struct regset *regset, struct regcache *regcache,
+sh_linux_supply_fpregset (const struct regset *regset, struct regcache *regcache,
 		      int regnum, const void *fpregs, size_t len)
 {
-  const struct gdbarch_tdep *tdep = gdbarch_tdep (regset->arch);
-  const char *regs = fpregs;
+  struct gdbarch *gdbarch = regcache->arch ();
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  const gdb_byte *regs = (const gdb_byte *) fpregs;
   int i;
 
   gdb_assert (len == tdep->sizeof_fpregset);
@@ -591,12 +594,13 @@ sh_supply_fpregset (const struct regset *regset, struct regcache *regcache,
    all registers in REGSET.  */
 
 static void
-sh_collect_fpregset (const struct regset *regset,
+sh_linux_collect_fpregset (const struct regset *regset,
 		       const struct regcache *regcache,
 		       int regnum, void *fpregs, size_t len)
 {
-  const struct gdbarch_tdep *tdep = gdbarch_tdep (regset->arch);
-  char *regs = fpregs;
+  struct gdbarch *gdbarch = regcache->arch ();
+  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  gdb_byte *regs = (gdb_byte *) fpregs;
   int i;
 
   gdb_assert (len == tdep->sizeof_fpregset);
@@ -611,32 +615,27 @@ sh_collect_fpregset (const struct regset *regset,
     regcache_raw_collect (regcache, FPUL_REGNUM, regs + 33*4);
 }
 
-/* Return the appropriate register set for the core section identified
-   by SECT_NAME and SECT_SIZE.  */
+static const struct regset sh_linux_gregset =
+  {
+    NULL, sh_linux_supply_gregset, sh_linux_collect_gregset
+  };
 
-const struct regset *
-sh_linux_regset_from_core_section (struct gdbarch *gdbarch,
-			       const char *sect_name, size_t sect_size)
+static const struct regset sh_linux_fpregset =
+  {
+    NULL, sh_linux_supply_fpregset, sh_linux_collect_fpregset
+  };
+
+/* Iterate over core file register note sections.  */
+
+static void
+sh_linux_iterate_over_regset_sections (struct gdbarch *gdbarch,
+					 iterate_over_regset_sections_cb *cb,
+					 void *cb_data,
+					 const struct regcache *regcache)
 {
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
-
-  if (strcmp (sect_name, ".reg") == 0 && sect_size == tdep->sizeof_gregset)
-    {
-      if (tdep->gregset == NULL)
-	tdep->gregset = regset_alloc (gdbarch, sh_supply_gregset,
-				      sh_collect_gregset);
-      return tdep->gregset;
-    }
-
-  if ((strcmp (sect_name, ".reg2") == 0 && sect_size == tdep->sizeof_fpregset))
-    {
-      if (tdep->fpregset == NULL)
-	tdep->fpregset = regset_alloc (gdbarch, sh_supply_fpregset,
-				       sh_collect_fpregset);
-      return tdep->fpregset;
-    }
-
-  return NULL;
+  cb (".reg", tdep->sizeof_gregset, &sh_linux_gregset, NULL, cb_data);
+  cb (".reg2", tdep->sizeof_fpregset, &sh_linux_fpregset, NULL, cb_data);
 }
 
 /* The register sets used in GNU/Linux ELF core-dumps are identical to
@@ -698,12 +697,9 @@ sh_linux_init_abi (struct gdbarch_info info, struct gdbarch *gdbarch)
 
   frame_unwind_append_unwinder(gdbarch, &sh_linux_sigtramp_frame_unwind);
 
-  /* If we have a register mapping, enable the generic core file
-     support, unless it has already been enabled.  */
-  if (tdep->gregset_reg_offset
-      && !gdbarch_regset_from_core_section_p (gdbarch))
-    set_gdbarch_regset_from_core_section (gdbarch,
-                                         sh_linux_regset_from_core_section);
+  /* Core file support. */
+  set_gdbarch_iterate_over_regset_sections
+    (gdbarch, sh_linux_iterate_over_regset_sections);
 
   /* GNU/Linux uses SVR4-style shared libraries.  */
   set_gdbarch_skip_trampoline_code (gdbarch, find_solib_trampoline_target);
